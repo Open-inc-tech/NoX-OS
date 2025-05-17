@@ -1,114 +1,213 @@
 ;==================================================================
-; NoX-OS Bootloader
+; NoX-OS Enhanced Bootloader
 ;==================================================================
-; This bootloader initializes the system, sets up the stack,
-; displays a welcome message, and loads the kernel from disk.
-;
-; Real mode bootloader that loads NoX-OS kernel from floppy disk
 
-BITS 16                     ; We're working with 16-bit code
-ORG 0x7C00                  ; Standard boot sector loading address
+BITS 16
+ORG 0x7C00
 
 ;------------------------------------------------------------------
 ; CONSTANTS
 ;------------------------------------------------------------------
-%define LOAD_SEGMENT 0x1000 ; Segment where kernel will be loaded
-%define LOAD_OFFSET 0x0000  ; Offset where kernel will be loaded
-%define KERNEL_SEGMENT 0x1000 ; Segment address to jump to kernel
-%define KERNEL_OFFSET 0x0000  ; Offset within the segment for the kernel
-%define KERNEL_SIZE 32      ; Size of kernel in sectors (adjust as needed)
-%define KERNEL_START_SECTOR 2 ; Starting sector for kernel (boot sector is 1)
+%define LOAD_SEGMENT 0x0000
+%define LOAD_OFFSET 0x7E00
+%define KERNEL_SIZE 32
+%define SCREEN_WIDTH 80
+%define SCREEN_HEIGHT 25
+%define COLOR_ATTRIBUTE 0x1F    ; White on blue
 
-; Boot disk drive number (will be set by BIOS)
+; Boot drive number
 boot_drive db 0
 
 ;------------------------------------------------------------------
-; Boot sector entry point
+; Entry point
 ;------------------------------------------------------------------
 start:
-    cli                     ; Disable interrupts while we set up
-    
-    ; Set up segment registers
-    xor ax, ax              ; Clear AX register
-    mov ds, ax              ; Data segment = 0
-    mov es, ax              ; Extra segment = 0
-    mov ss, ax              ; Stack segment = 0
-    mov sp, 0x7C00          ; Stack pointer just below bootloader
-    
-    sti                     ; Enable interrupts again
-    
-    ; Store boot drive number
+    ; Set up segments and stack
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti
+
+    ; Store boot drive
     mov [boot_drive], dl
-    
-    ; Clear the screen
+
+    ; Set video mode (80x25 color text)
+    mov ax, 0x0003
+    int 0x10
+
+    ; Clear screen and set colors
     call clear_screen
-    
-    ; Display boot message
-    mov si, boot_msg
-    call print_string
-    
-    ; Load the kernel from disk
+
+    ; Display welcome banner
+    call display_welcome
+
+    ; Show loading animation
+    call loading_animation
+
+    ; Load kernel
     call load_kernel
-    jc disk_error           ; If carry flag set, we have an error
-    
-    ; Display kernel loaded message
+    jc disk_error
+
+    ; Success message
     mov si, kernel_loaded_msg
-    call print_string
-    
-    ; Wait briefly to show the message
-    mov cx, 0x0010          ; Outer loop
-    mov dx, 0xFFFF          ; Inner loop
+    call print_centered
+
+    ; Brief delay
+    mov cx, 10
     call delay_loop
-    
-    ; Set drive number in DL for kernel
-    mov dl, [boot_drive]
-    
+
     ; Jump to kernel
-    jmp KERNEL_SEGMENT:KERNEL_OFFSET
+    jmp LOAD_SEGMENT:LOAD_OFFSET
 
 ;------------------------------------------------------------------
-; SUBROUTINES
+; Display centered welcome message
 ;------------------------------------------------------------------
+display_welcome:
+    push ax
+    push bx
+
+    ; Calculate center position
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 10
+    mov dl, (SCREEN_WIDTH - 23) / 2
+    int 0x10
+
+    ; Print welcome message
+    mov si, welcome_msg
+    call print_string
+
+    ; Optional beep
+    mov ah, 0x0E
+    mov al, 0x07
+    int 0x10
+
+    pop bx
+    pop ax
+    ret
+
+;------------------------------------------------------------------
+; Loading animation
+;------------------------------------------------------------------
+loading_animation:
+    push ax
+    push cx
+    push dx
+
+    mov cx, 4          ; Number of animation frames
+
+.loop:
+    mov ah, 0x02      ; Set cursor position
+    mov bh, 0
+    mov dh, 12
+    mov dl, (SCREEN_WIDTH - 12) / 2
+    int 0x10
+
+    mov si, loading_msg
+    call print_string
+
+    push cx
+    mov cx, 5         ; Delay duration
+    call delay_loop
+    pop cx
+
+    loop .loop
+
+    pop dx
+    pop cx
+    pop ax
+    ret
+
+;------------------------------------------------------------------
+; Print centered string
+; Input: SI = string pointer
+;------------------------------------------------------------------
+print_centered:
+    push ax
+    push bx
+    push cx
+    push dx
+
+    ; Get string length
+    mov cx, 0
+    mov bx, si
+.count:
+    lodsb
+    test al, al
+    jz .done_count
+    inc cx
+    jmp .count
+.done_count:
+    mov si, bx        ; Restore SI
+
+    ; Calculate center position
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 12
+    mov dl, (SCREEN_WIDTH - cx) / 2
+    int 0x10
+
+    ; Print string
+    call print_string
+
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
 
 ;------------------------------------------------------------------
 ; Function: delay_loop
 ; Simple delay loop to wait a specified time
-; Input: CX:DX = delay counter
+; Input: CX = delay counter
 ;------------------------------------------------------------------
 delay_loop:
+    push dx
+.loop_delay:
+    mov dx, 0xFFFF
+.inner_loop:
     dec dx
-    jnz delay_loop
-    dec cx
-    jnz delay_loop
+    jnz .inner_loop
+    loop .loop_delay
+    pop dx
     ret
 
 ;------------------------------------------------------------------
 ; Function: clear_screen
-; Clears the screen using BIOS video services
+; Clears the screen using BIOS video services and sets background color
 ;------------------------------------------------------------------
 clear_screen:
     push ax
     push bx
-    
-    mov ah, 0x00            ; Set video mode function
-    mov al, 0x03            ; 80x25 text mode
-    int 0x10                ; Call BIOS video service
-    
-    mov ah, 0x06            ; Scroll window up function
-    mov al, 0               ; Clear entire window
-    mov bh, 0x07            ; Normal attribute (white on black)
-    mov cx, 0               ; Upper left corner (0,0)
-    mov dh, 24              ; Lower right corner row (bottom of screen)
-    mov dl, 79              ; Lower right corner column (right side of screen)
-    int 0x10                ; Call BIOS video service
-    
+    push cx
+    push dx
+    push di
+    push es
+
+    ; Set video mode (80x25 color text)
+    mov ax, 0x0003
+    int 0x10
+
+    ; Clear screen with specified color
+    mov ax, 0x0600
+    mov bh, COLOR_ATTRIBUTE
+    mov cx, 0x0000
+    mov dx, 0x184F
+    int 0x10
+
     ; Reset cursor position
-    mov ah, 0x02            ; Set cursor position function
-    mov bh, 0               ; Page number
-    mov dh, 0               ; Row
-    mov dl, 0               ; Column
-    int 0x10                ; Call BIOS video service
-    
+    mov ah, 0x02
+    mov bh, 0x00
+    xor dx, dx
+    int 0x10
+
+    pop es
+    pop di
+    pop dx
+    pop cx
     pop bx
     pop ax
     ret
@@ -121,19 +220,33 @@ clear_screen:
 print_string:
     push ax
     push bx
-    
-    mov ah, 0x0E            ; BIOS teletype function
-    mov bh, 0               ; Page number
-    mov bl, 0x07            ; Text attribute (white on black)
-    
-.loop:
-    lodsb                   ; Load byte from SI into AL and increment SI
-    test al, al             ; Check if character is 0 (end of string)
-    jz .done                ; If zero, we're done
-    int 0x10                ; Print the character
-    jmp .loop               ; Repeat for next character
-    
+    push bp
+    push cx
+    push di
+    push dx
+    push es
+    push si
+
+    mov ah, 0x0E      ; BIOS teletype function
+    mov bh, 0       ; Page number
+    mov bl, COLOR_ATTRIBUTE ; Text attribute (color)
+
+.next_char:
+    lodsb             ; Load byte from string
+    test al, al       ; Check for end of string (null terminator)
+    jz .done          ; If end of string, exit
+
+    int 0x10          ; Print character
+
+    jmp .next_char     ; Loop to next character
+
 .done:
+    pop si
+    pop es
+    pop dx
+    pop di
+    pop cx
+    pop bp
     pop bx
     pop ax
     ret
@@ -149,51 +262,53 @@ load_kernel:
     push cx
     push dx
     push es
-    
+    push di
+
     ; Set up ES:BX for memory location to load to
     mov ax, LOAD_SEGMENT
     mov es, ax
-    mov bx, LOAD_OFFSET     ; ES:BX -> where the kernel will be loaded
-    
+    mov bx, LOAD_OFFSET
+
     ; Initialize retry counter
-    mov di, 3               ; 3 retries
-    
+    mov di, 3
+
 .retry:
     ; Prepare to read from disk
-    mov ah, 0x02            ; Read sectors function
+    mov ah, 0x02      ; Read sectors function
     mov al, KERNEL_SIZE     ; Number of sectors to read
-    mov ch, 0               ; Cylinder 0
-    mov cl, KERNEL_START_SECTOR ; Start from sector after boot sector
-    mov dh, 0               ; Head 0
-    mov dl, [boot_drive]    ; Drive number from boot
-    
-    ; Read from disk
-    int 0x13                ; Call BIOS disk service
-    jnc .success            ; If carry flag clear, read was successful
-    
+    mov ch, 0       ; Cylinder 0
+    mov cl, 2       ; Sector to start reading from (2 = after boot sector)
+    mov dh, 0       ; Head 0
+    mov dl, [boot_drive]    ; Drive number
+
+    ; Read sectors from disk
+    int 0x13          ; Call BIOS disk service
+    jnc .success      ; Jump if no error (carry flag clear)
+
     ; Reset disk system and retry
     xor ax, ax
-    int 0x13                ; Reset disk system
-    
-    dec di                  ; Decrement retry counter
-    jnz .retry              ; Try again if retries remaining
-    
+    int 0x13
+
+    dec di            ; Decrement retry counter
+    jnz .retry        ; Retry if counter not zero
+
     ; All retries failed
-    stc                     ; Set carry flag to indicate error
+    stc               ; Set carry flag to indicate error
     jmp .done
-    
+
 .success:
-    ; Verify correct number of sectors read
-    cmp al, KERNEL_SIZE     ; Compare number of sectors actually read
-    jne .error              ; If not equal, we have an error
-    
-    clc                     ; Clear carry flag to indicate success
+    ; Verify number of sectors read
+    cmp al, KERNEL_SIZE
+    jne .error
+
+    clc               ; Clear carry flag to indicate success
     jmp .done
-    
+
 .error:
-    stc                     ; Set carry flag to indicate error
-    
+    stc               ; Set carry flag to indicate error
+
 .done:
+    pop di
     pop es
     pop dx
     pop cx
@@ -206,37 +321,24 @@ load_kernel:
 ; Handles disk read errors
 ;------------------------------------------------------------------
 disk_error:
-    mov si, disk_error_msg
+    mov si, error_msg
     call print_string
-    
-    ; Wait for a keypress
-.wait_key:
-    mov ah, 0x00            ; BIOS get key function
-    int 0x16                ; Call BIOS keyboard service
-    
-    ; Reboot the system
-    mov si, reboot_msg
-    call print_string
-    
-    ; Wait briefly
-    mov cx, 0x0010          ; Outer loop
-    mov dx, 0xFFFF          ; Inner loop
-    call delay_loop
-    
-    ; Jump to reset vector
-    jmp 0xFFFF:0x0000
+
+    ; Hang the system or reboot
+.hang:
+    hlt
+    jmp .hang
 
 ;------------------------------------------------------------------
-; DATA SECTION
+; Data
 ;------------------------------------------------------------------
-boot_msg db 'NoX-OS Bootloader v0.3', 0x0D, 0x0A, 'Loading kernel...', 0x0D, 0x0A, 0
-kernel_loaded_msg db 'Kernel loaded successfully, transferring control...', 0x0D, 0x0A, 0
-disk_error_msg db 'Error: Failed to load kernel from disk!', 0x0D, 0x0A
-              db 'Press any key to reboot...', 0x0D, 0x0A, 0
-reboot_msg db 'Rebooting system...', 0x0D, 0x0A, 0
+welcome_msg db 'Welcome to NoX-OS v1.0', 0x0D, 0x0A, 0
+loading_msg db 'Loading...', 0
+kernel_loaded_msg db 'Kernel loaded successfully!', 0
+error_msg db 'Error loading kernel', 0
 
 ;------------------------------------------------------------------
-; Padding and boot signature
+; Boot sector signature
 ;------------------------------------------------------------------
-times 510-($-$$) db 0       ; Pad the boot sector to 510 bytes
-dw 0xAA55                   ; Boot signature (required by BIOS)
+times 510-($-$$) db 0
+dw 0xAA55

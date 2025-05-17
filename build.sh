@@ -50,9 +50,15 @@ mkdir -p "${BUILD_DIR}"
 echo "Compiling bootloader..."
 ${NASM} -f bin -o "${BOOT_TARGET}" "${BOOT_SRC}"
 
-# Compile kernel
+# Compile kernel and features
 echo "Compiling kernel..."
 ${NASM} -f bin -I "${SRC_DIR}" -o "${KERNEL_TARGET}" "${KERNEL_SRC}"
+${NASM} -f bin -I "${SRC_DIR}" -o "${BUILD_DIR}/browser.bin" "${KERNEL_DIR}/browser.asm"
+${NASM} -f bin -I "${SRC_DIR}" -o "${BUILD_DIR}/sysmon.bin" "${KERNEL_DIR}/sysmon.asm"
+
+# Combine all binaries
+cat "${BUILD_DIR}/browser.bin" >> "${KERNEL_TARGET}"
+cat "${BUILD_DIR}/sysmon.bin" >> "${KERNEL_TARGET}"
 
 # Create disk image
 echo "Creating disk image..."

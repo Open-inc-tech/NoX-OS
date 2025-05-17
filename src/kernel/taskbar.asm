@@ -20,20 +20,44 @@ taskbar_clock_format db 0        ; 0 = 24h, 1 = 12h
 ; Taskbar buffer to store screen content that gets overwritten
 taskbar_buffer: times 160 db 0   ; 80 chars x 2 bytes (char+attr)
 
+section .data
+taskbar_height equ 1
+taskbar_color equ 0x70  ; White on black
+clock_pos_x equ 72      ; Clock position adjusted for better alignment
+
+section .text
 ;------------------------------------------------------------------
 ; Function: taskbar_init
 ; Initializes the taskbar system
 ;------------------------------------------------------------------
 taskbar_init:
     push ax
-    
-    ; Set taskbar as enabled but not visible yet
-    mov byte [taskbar_enabled], 1
-    mov byte [taskbar_visible], 0
-    
-    ; Set clock format to 24h by default
-    mov byte [taskbar_clock_format], 0
-    
+    push bx
+    push cx
+
+    ; Initialize start menu
+    call init_start_menu
+
+    ; Draw initial taskbar
+    call draw_taskbar
+
+start_menu_items:
+    db "Programs", 0
+    db "Settings", 0
+    db "Browser", 0
+    db "System Monitor", 0
+    db "Help", 0
+    db 0  ; End of menu marker
+
+init_start_menu:
+    push ax
+    push bx
+    mov byte [start_menu_visible], 0
+    pop bx
+    pop ax
+    ret
+    pop cx
+    pop bx
     pop ax
     ret
 
@@ -43,19 +67,19 @@ taskbar_init:
 ;------------------------------------------------------------------
 taskbar_toggle:
     push ax
-    
+
     ; Toggle the enabled flag
     mov al, [taskbar_enabled]
     xor al, 1
     mov [taskbar_enabled], al
-    
+
     ; If we're disabling, hide it
     test al, al
     jz taskbar_hide
-    
+
     ; If we're enabling, show it
     call taskbar_show
-    
+
     pop ax
     ret
 
@@ -72,66 +96,66 @@ taskbar_show:
     push di
     push es
     push ds
-    
+
     ; Check if taskbar is enabled
     cmp byte [taskbar_enabled], 0
     je .done
-    
+
     ; Check if taskbar is already visible
     cmp byte [taskbar_visible], 1
     je .done
-    
+
     ; Save screen contents before drawing taskbar
     call taskbar_save_screen
-    
+
     ; Set video memory segment
     mov ax, 0xB800
     mov es, ax
-    
+
     ; Calculate starting position for taskbar (row 24, column 0)
     mov di, (TASKBAR_ROW * 80) * 2
-    
+
     ; Set the attributes for the taskbar (blue background, white text)
     mov ah, TASKBAR_COLOR
-    
+
     ; Draw the taskbar background
     mov cx, 80  ; 80 characters across the screen
     mov al, ' ' ; Fill with spaces
     rep stosw
-    
+
     ; Reset DI to beginning of taskbar
     mov di, (TASKBAR_ROW * 80) * 2
-    
+
     ; Draw the OS name at the left
     mov si, taskbar_os_name
     call taskbar_write_text
-    
+
     ; Draw the separator
     add di, 2
     mov al, '|'
     mov ah, TASKBAR_COLOR
     stosw
     add di, 2
-    
+
     ; Draw the memory status
     call taskbar_draw_memory
-    
+
     ; Draw the separator
     add di, 2
     mov al, '|'
     mov ah, TASKBAR_COLOR
     stosw
     add di, 2
-    
+
     ; Calculate position for the clock (right-aligned)
     mov di, (TASKBAR_ROW * 80 + 80 - 10) * 2
-    
+
     ; Draw the current time
     call taskbar_draw_time
-    
+
     ; Mark taskbar as visible
     mov byte [taskbar_visible], 1
-    
+
 .done:
     pop ds
     pop es
@@ -156,17 +180,17 @@ taskbar_hide:
     push di
     push es
     push ds
-    
+
     ; Check if taskbar is visible
     cmp byte [taskbar_visible], 0
     je .done
-    
+
     ; Restore the original screen content
     call taskbar_restore_screen
-    
+
     ; Mark taskbar as not visible
     mov byte [taskbar_visible], 0
-    
+
 .done:
     pop ds
     pop es
@@ -191,20 +215,20 @@ taskbar_save_screen:
     push di
     push es
     push ds
-    
+
     ; Set up source and destination
     mov ax, 0xB800
     mov ds, ax
     mov si, (TASKBAR_ROW * 80) * 2
-    
+
     mov ax, cs
     mov es, ax
     mov di, taskbar_buffer
-    
+
     ; Copy screen contents to buffer
     mov cx, 80
     rep movsw
-    
+
     pop ds
     pop es
     pop di
@@ -228,20 +252,20 @@ taskbar_restore_screen:
     push di
     push es
     push ds
-    
+
     ; Set up source and destination
     mov ax, cs
     mov ds, ax
     mov si, taskbar_buffer
-    
+
     mov ax, 0xB800
     mov es, ax
     mov di, (TASKBAR_ROW * 80) * 2
-    
+
     ; Copy buffer back to screen
     mov cx, 80
     rep movsw
-    
+
     pop ds
     pop es
     pop di
@@ -258,24 +282,24 @@ taskbar_restore_screen:
 ;------------------------------------------------------------------
 taskbar_update:
     push ax
-    
+
     ; Check if taskbar is enabled and visible
     cmp byte [taskbar_enabled], 0
     je .done
     cmp byte [taskbar_visible], 0
     je .done
-    
+
     ; Update counter
     inc byte [taskbar_update_time]
     cmp byte [taskbar_update_time], 18  ; Update approximately every second (18 ticks)
     jb .done
-    
+
     ; Reset counter
     mov byte [taskbar_update_time], 0
-    
+
     ; Update time display
     call taskbar_draw_time
-    
+
 .done:
     pop ax
     ret
@@ -292,24 +316,24 @@ taskbar_draw_time:
     push si
     push di
     push es
-    
+
     ; Set video memory segment
     mov ax, 0xB800
     mov es, ax
-    
+
     ; Calculate position for the clock (right-aligned)
     mov di, (TASKBAR_ROW * 80 + 80 - 10) * 2
-    
+
     ; Get current time
     call get_rtc_time
-    
+
     ; Draw time based on format
     cmp byte [taskbar_clock_format], 0
     je .24h_format
-    
+
     ; 12-hour format (TODO)
     jmp .draw_time
-    
+
 .24h_format:
     ; Display hours
     mov al, ch                    ; Hour in CH
@@ -319,11 +343,11 @@ taskbar_draw_time:
     mov es:[di], ah               ; Display tens digit
     mov es:[di+2], al             ; Display ones digit
     add di, 4
-    
+
     ; Display colon
     mov word es:[di], TASKBAR_COLOR * 256 + ':'
     add di, 2
-    
+
     ; Display minutes
     mov al, cl                    ; Minute in CL
     call bcd_to_binary
@@ -332,11 +356,11 @@ taskbar_draw_time:
     mov es:[di], ah               ; Display tens digit
     mov es:[di+2], al             ; Display ones digit
     add di, 4
-    
+
     ; Display colon
     mov word es:[di], TASKBAR_COLOR * 256 + ':'
     add di, 2
-    
+
     ; Display seconds
     mov al, dh                    ; Second in DH
     call bcd_to_binary
@@ -344,18 +368,18 @@ taskbar_draw_time:
     add ax, '00'                 ; Convert to ASCII
     mov es:[di], ah               ; Display tens digit
     mov es:[di+2], al             ; Display ones digit
-    
+
 .draw_time:
     ; Set all the attributes
     mov di, (TASKBAR_ROW * 80 + 80 - 10) * 2
     mov cx, 8                    ; 8 characters (HH:MM:SS)
-    
+
 .set_attr_loop:
     inc di                       ; Move to attribute byte
     mov byte es:[di], TASKBAR_COLOR  ; Set attribute
     inc di                       ; Move to next character
     loop .set_attr_loop
-    
+
     pop es
     pop di
     pop si
@@ -377,49 +401,49 @@ taskbar_draw_memory:
     push si
     push di
     push es
-    
+
     ; Set video memory segment
     mov ax, 0xB800
     mov es, ax
-    
+
     ; Position is passed in DI
-    
+
     ; Get memory stats
     call mem_get_stats            ; AX=total, BX=free, CX=used, DX=largest free
-    
+
     ; Display memory usage text
     mov si, taskbar_mem_msg
     call taskbar_write_text
-    
+
     ; Display free memory percentage
     ; Calculate percentage: (free * 100) / total
     mov ax, bx                   ; Free memory
     mov cx, 100
     mul cx
     div word [mem_total_kb]
-    
+
     ; Display percentage
     aam                          ; Convert to BCD for display
     add ax, '00'                 ; Convert to ASCII
-    
+
     ; Check if we need to display tens digit
     cmp ah, '0'
     je .skip_tens
     mov es:[di], ah              ; Display tens digit
     add di, 2
-    
+
 .skip_tens:
     mov es:[di], al              ; Display ones digit
     add di, 2
-    
+
     ; Display percent sign
     mov word es:[di], TASKBAR_COLOR * 256 + '%'
     add di, 2
-    
+
     ; Display "Free"
     mov si, taskbar_free_msg
     call taskbar_write_text
-    
+
     pop es
     pop di
     pop si
@@ -438,17 +462,17 @@ taskbar_draw_memory:
 ;------------------------------------------------------------------
 taskbar_write_text:
     push ax
-    
+
     mov ah, TASKBAR_COLOR
-    
+
 .loop:
     lodsb                        ; Load next character
     test al, al                  ; Check for end of string
     jz .done
-    
+
     stosw                        ; Write character and attribute
     jmp .loop
-    
+
 .done:
     pop ax
     ret
@@ -459,3 +483,40 @@ taskbar_write_text:
 taskbar_os_name db ' NoX-OS ', 0
 taskbar_mem_msg db 'Mem: ', 0
 taskbar_free_msg db ' Free', 0
+
+draw_taskbar:
+    push ax
+    push bx
+    push cx
+
+    ; Draw taskbar background
+    mov ax, 0
+    mov bx, 24          ; Bottom of screen
+    mov cx, 80          ; Full width
+    mov dx, taskbar_color
+    call fill_line
+
+    ; Draw system menu
+    call draw_menu
+
+    ; Draw clock
+    call update_clock
+
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+update_clock:
+    push ax
+    mov ah, 0x02    ; Get system time
+    int 0x1A
+
+    ; Convert to ASCII and display
+    call convert_time
+    mov bx, clock_pos_x
+    mov cx, 24      ; Bottom line
+    call print_time
+
+    pop ax
+    ret

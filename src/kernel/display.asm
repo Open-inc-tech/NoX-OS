@@ -1,47 +1,117 @@
+
 ;==================================================================
 ; NoX-OS Display Handling
 ;==================================================================
-; Display output routines for the kernel
+
+section .data
+; Display attributes
+ATTR_NORMAL     equ 0x07    ; Light gray on black
+ATTR_HIGHLIGHT  equ 0x0F    ; White on black
+ATTR_ERROR      equ 0x04    ; Red on black
+ATTR_SUCCESS    equ 0x02    ; Green on black
+ATTR_INFO       equ 0x09    ; Blue on black
+
+; Screen dimensions
+SCREEN_WIDTH    equ 80
+SCREEN_HEIGHT   equ 25
+VIDEO_MEM       equ 0xB800
+
+section .text
+;------------------------------------------------------------------
+; Function: clear_screen
+; Clears the entire screen with specified attribute
+;------------------------------------------------------------------
+clear_screen:
+    push ax
+    push cx
+    push di
+    push es
+    
+    mov ax, VIDEO_MEM
+    mov es, ax
+    xor di, di
+    mov ax, 0x0720      ; Space with normal attribute
+    mov cx, SCREEN_WIDTH * SCREEN_HEIGHT
+    rep stosw
+    
+    pop es
+    pop di
+    pop cx
+    pop ax
+    ret
 
 ;------------------------------------------------------------------
-; VIDEO CONSTANTS
+; Function: print_string_attr
+; Prints a string with specified attribute
+; Input: SI = string address, BL = attribute, DH = row, DL = column
 ;------------------------------------------------------------------
-%define VIDEO_MEM 0xB800    ; Base address of video memory
-%define VIDEO_COLS 80       ; Number of columns
-%define VIDEO_ROWS 25       ; Number of rows
-%define CHAR_ATTR 0x07      ; Default character attribute (white on black)
-
-;------------------------------------------------------------------
-; Function: scroll_screen
-; Scrolls the screen up by N lines
-; Input: AL = number of lines to scroll
-;------------------------------------------------------------------
-scroll_screen:
+print_string_attr:
     push ax
     push bx
     push cx
-    push dx
+    push di
+    push es
     
-    ; Use BIOS scroll function
-    mov ah, 0x06            ; Scroll window up function
-    mov bh, CHAR_ATTR       ; Character attribute
-    mov cx, 0               ; Upper left corner (0,0)
-    mov dh, VIDEO_ROWS - 1  ; Lower right corner row (bottom of screen)
-    mov dl, VIDEO_COLS - 1  ; Lower right corner column (right side of screen)
-    int 0x10                ; Call BIOS video service
+    mov ax, VIDEO_MEM
+    mov es, ax
     
-    pop dx
+    ; Calculate screen position
+    movzx ax, dh
+    mov cx, SCREEN_WIDTH * 2
+    mul cx
+    movzx cx, dl
+    shl cx, 1
+    add ax, cx
+    mov di, ax
+    
+    mov ah, bl          ; Attribute
+    
+.loop:
+    lodsb               ; Load character
+    test al, al         ; Check for null terminator
+    jz .done
+    stosw               ; Write char and attribute
+    jmp .loop
+    
+.done:
+    pop es
+    pop di
     pop cx
     pop bx
     pop ax
     ret
 
 ;------------------------------------------------------------------
-; Function: draw_box
-; Draws a simple box using BIOS text functions (simplified)
+; Function: scroll_screen
+; Scrolls screen up by one line
 ;------------------------------------------------------------------
-draw_box:
-    ; This is a simplified stub that doesn't actually draw a box
-    ; due to the complexities of direct video memory manipulation
-    ; in this simple OS
+scroll_screen:
+    push ax
+    push cx
+    push si
+    push di
+    push es
+    push ds
+    
+    mov ax, VIDEO_MEM
+    mov ds, ax
+    mov es, ax
+    
+    ; Copy lines up
+    mov si, SCREEN_WIDTH * 2  ; Source: second line
+    xor di, di               ; Destination: first line
+    mov cx, (SCREEN_HEIGHT - 1) * SCREEN_WIDTH
+    rep movsw
+    
+    ; Clear bottom line
+    mov cx, SCREEN_WIDTH
+    mov ax, 0x0720          ; Space with normal attribute
+    rep stosw
+    
+    pop ds
+    pop es
+    pop di
+    pop si
+    pop cx
+    pop ax
     ret

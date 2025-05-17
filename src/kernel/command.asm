@@ -32,6 +32,10 @@ CMD_ENTRY_size equ 78           ; Total size of a command entry
 ;------------------------------------------------------------------
 command_table:
     ; Format: command name, handler function, help text
+    db 'SETTINGS', 0, 0, 0  ; Name field
+    dw cmd_settings         ; Function pointer
+    db 'Open system settings', 0  ; Help text
+    times 64 - 19 db 0     ; Padding for help text
     db 'HELP', 0, 0, 0, 0, 0, 0, 0, 0  ; Name field (12 bytes)
     dw cmd_help                        ; Function pointer (2 bytes)
     db 'Displays help information about available commands', 0  ; Help text (64 bytes)
@@ -3356,4 +3360,16 @@ cmd_mouse:
     pop ax
     pop di
     pop si
+    ret
+;------------------------------------------------------------------
+; Function: cmd_settings
+; Opens the system settings application
+;------------------------------------------------------------------
+cmd_settings:
+    push ax
+    
+    ; Launch settings application
+    call settings_main
+    
+    pop ax
     ret

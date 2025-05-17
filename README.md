@@ -1,132 +1,135 @@
 # NoX-OS
 
-NoX-OS is a simple but practical 16-bit operating system inspired by MS-DOS 5, written entirely in x86 assembly language. It runs in real mode on basic PC hardware and provides essential OS features such as a command line interface, file management, and a text editor.
+A practical 16-bit operating system inspired by MS-DOS 5, written in x86 assembly.
 
----
+## Overview
 
-## What is NoX-OS?
+NoX-OS is a bootable 16-bit operating system that runs in real mode on x86 hardware. It consists of a bootloader, kernel, and file system implementation, capable of booting from a floppy disk image and providing practical file management and text editing capabilities.
 
-NoX-OS is a small educational operating system designed to run on real-mode x86 PCs. It features:
+### Features
 
-- A custom bootloader that loads the kernel from disk
-- FAT12 file system support for reading and navigating files
-- A command-line shell similar to classic DOS commands
-- Basic file management commands like `DIR`, `DEL`, `TYPE`, `CD`
-- A simple text editor to create and edit files
-- Console I/O handled via BIOS interrupts
-- Modular, clean assembly code structure
+- **16-bit real mode operation** - Compatible with basic PC hardware
+- **Custom bootloader** - Loads the kernel from disk with error handling
+- **FAT12 file system support** - Read and navigate a standard file system
+- **Command-line shell** - Familiar DOS-like experience
+- **Text editor** - Create and edit text files
+- **File management** - Create, read, and delete files
+- **Modular architecture** - Clean, well-structured assembly code
 
-NoX-OS is a project to learn and demonstrate OS development concepts on very simple hardware.
+### Included Commands
 
----
+NoX-OS includes the following DOS-like commands:
 
-## How to Build NoX-OS
+- `HELP` - Display available commands
+- `CLS` - Clear the screen
+- `VER` - Display system version
+- `DIR` - List files in the current directory
+- `TYPE` - Display the contents of a text file
+- `DEL` - Delete files
+- `CD` - Change directory
+- `EDIT` - Simple text editor
+- `EXIT` - Restart the system
 
-You need the following tools installed on your development machine:
+## Building
 
-- [NASM](https://www.nasm.us/) assembler
-- `dd` (data duplicator) for creating disk images (Linux/macOS) or similar tool on Windows
-- [QEMU](https://www.qemu.org/) emulator for testing the OS in a virtual environment
+### Prerequisites
 
-### Steps:
+To build NoX-OS, you need the following tools:
 
-1. Clone or download the repository.
+- **NASM** (Netwide Assembler) - For assembly code compilation
+- **DD** (Data Duplicator) - For creating disk images
+- **QEMU** - For testing the OS in an emulator
 
-2. Open a terminal in the project directory.
+### Build Commands
 
-3. Make the build script executable:
+To build the operating system:
 
-    ```bash
-    chmod +x build.sh
-    ```
+```bash
+# Make the build script executable
+chmod +x build.sh
 
-4. Run the build script to assemble the bootloader and kernel, and create a bootable floppy image:
+# Build the OS image
+./build.sh
+```
 
-    ```bash
-    ./build.sh
-    ```
+This creates a bootable floppy disk image (`build/noxos.img`) that contains the bootloader and kernel.
 
-This will generate a floppy disk image file `build/noxos.img`.
+## Running
 
----
+To run NoX-OS in QEMU:
 
-## How to Run NoX-OS
+```bash
+# Make the run script executable
+chmod +x run.sh
 
-You can run NoX-OS in QEMU, a popular emulator that simulates PC hardware.
+# Run the OS in QEMU
+./run.sh
+```
 
-1. Make the run script executable:
+### Running Outside Replit
 
-    ```bash
-    chmod +x run.sh
-    ```
+To run NoX-OS on your local machine:
 
-2. Run NoX-OS inside QEMU with:
-
-    ```bash
-    ./run.sh
-    ```
-
-This will start the virtual machine and boot NoX-OS from the floppy image.
-
----
-
-## Using NoX-OS
-
-Once booted, you will see a command prompt similar to DOS. You can use commands like:
-
-- `HELP` — List all available commands
-- `DIR` — List files in the current directory
-- `TYPE filename` — Display contents of a text file
-- `EDIT filename` — Open simple text editor to create or modify a file
-- `DEL filename` — Delete a file
-- `CD directory` — Change directory
-- `CLS` — Clear the screen
-- `VER` — Show OS version
-- `EXIT` — Restart the system
-
-NoX-OS supports standard 8.3 filename format and FAT12 filesystem, allowing compatibility with other DOS-based systems.
-
----
+1. Download the `noxos.img` file from Replit
+2. Install QEMU on your system if not already installed
+3. Run the image with: `qemu-system-i386 -fda noxos.img`
 
 ## Project Structure
 
-- `src/boot/` — Bootloader code  
-- `src/kernel/` — Kernel and core OS functions  
-- `src/include/` — Shared constants and macros  
-- `build.sh` — Build script (assembles code, creates image)  
-- `run.sh` — Runs the OS in QEMU emulator  
+- **src/boot/** - Bootloader code
+  - **boot.asm** - Main bootloader
+- **src/kernel/** - Kernel code
+  - **kernel.asm** - Main kernel entry point
+  - **io.asm** - Input/output routines
+  - **keyboard.asm** - Keyboard handling
+  - **display.asm** - Screen output functionality
+  - **disk.asm** - Disk I/O routines
+  - **fat.asm** - FAT12 file system implementation
+  - **command.asm** - Command shell implementation
+  - **editor.asm** - Text editor implementation
+- **src/include/** - Shared include files
+  - **constants.inc** - System-wide constants
+- **build.sh** - Build script
+- **run.sh** - Run script for QEMU
 
----
+## File System Structure
+
+NoX-OS implements a FAT12 file system compatible with MS-DOS, allowing files to be shared between NoX-OS and other operating systems. The file system follows the standard FAT12 format:
+
+- **Boot Sector** - Contains the boot code and file system parameters
+- **FAT Tables** - File Allocation Tables that track cluster usage
+- **Root Directory** - Contains directory entries for files and subdirectories
+- **Data Area** - Contains the actual file data
+
+## Technical Details
+
+- **Boot Process** - 512-byte bootloader loads the kernel from disk sectors
+- **Memory Layout** - Kernel loaded at segment 0x1000
+- **Text Mode** - Uses standard 80x25 text mode with VGA BIOS routines
+- **Disk Access** - Uses INT 13h for disk operations
+- **File Names** - Supports standard 8.3 format filenames
 
 ## Limitations
 
-- NoX-OS runs only in 16-bit real mode (no protected mode)  
-- It does not support multitasking or memory protection  
-- Maximum file size is limited by available memory  
-- Only basic command-line interface is provided  
+- NoX-OS currently runs in 16-bit real mode only
+- Maximum file size is limited by available memory
+- No memory management or protection
+- No multitasking support
 
----
+## Future Enhancements
 
-## Future Plans
+Future versions may include:
 
-- Add support for longer filenames  
-- Implement protected mode and memory management  
-- Add executable file loading and running  
-- Provide basic multitasking capabilities  
-- Extend the set of commands and utilities  
-
----
+- More robust file system implementation
+- Support for more commands and utilities
+- Long filename support
+- Protected mode support
+- Basic executable file support
 
 ## License
 
-NoX-OS is open source and released under the MIT License.
-
----
+This project is open source and available under the MIT License.
 
 ## Acknowledgments
 
-This project is inspired by MS-DOS architecture, various open source OS projects, and educational materials on operating system development and x86 assembly.
-
----
-
-Feel free to explore, modify, and learn from the NoX-OS codebase! If you find issues or want to contribute, please submit pull requests or open issues.
+NoX-OS was inspired by various open-source OS development projects and educational resources.
